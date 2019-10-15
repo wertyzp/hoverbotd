@@ -54,8 +54,8 @@ CCADMIN=CCadmin
 build: .build-post
 
 .build-pre:
-# Add your pre 'build' code here...
-
+	if [ ! -d "libwebsockets/build" ]; then mkdir libwebsockets/build; fi
+	cd libwebsockets/build && cmake ../ && make
 .build-post: .build-impl
 # Add your post 'build' code here...
 
