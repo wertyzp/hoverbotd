@@ -20,6 +20,16 @@ extern "C" {
 #include "TextException.h"
 static int interrupted = 0;
 
+#pragma pack(push, 4)
+struct control {
+    int id;
+    int left;
+    int right;
+    int forward;
+    int backward;
+};
+#pragma pack(pop)
+
 class Server {
 public:
     Server(int argc, const char **argv);

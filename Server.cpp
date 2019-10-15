@@ -16,15 +16,7 @@
 #define RING_DEPTH 4096
 
 /* one of these created for each message */
-
-#pragma pack(push, 4)
-struct control {
-    int left;
-    int right;
-    int forward;
-    int backward;
-};
-#pragma pack(pop)
+extern control lastctrl;
 
 struct msg {
     void *payload; /* is malloc'd */
@@ -60,6 +52,7 @@ __minimal_destroy_message(void *_msg) {
     msg->len = 0;
 }
 #include <assert.h>
+#include <bits/stdio2.h>
 
 static int
 callback_minimal_server_echo(struct lws *wsi, enum lws_callback_reasons reason,
@@ -72,7 +65,7 @@ callback_minimal_server_echo(struct lws *wsi, enum lws_callback_reasons reason,
     const struct msg *pmsg;
     struct msg amsg;
     int m, n, flags;
-    
+    control * ctrl;
     switch (reason) {
 
         case LWS_CALLBACK_PROTOCOL_INIT:
@@ -194,6 +187,11 @@ callback_minimal_server_echo(struct lws *wsi, enum lws_callback_reasons reason,
             }
 
             memcpy((char *) amsg.payload + LWS_PRE, in, len);
+            ctrl = (control *)((char *)amsg.payload + LWS_PRE);
+            ctrl->id = 1;
+            memcpy(&lastctrl, ctrl, sizeof(control));
+            //printf("%d%d%d%d\n", ctrl->left, ctrl->right, ctrl->forward, ctrl->backward);
+            fflush(stdout);
             if (!lws_ring_insert(pss->ring, &amsg, 1)) {
                 __minimal_destroy_message(&amsg);
                 lwsl_user("dropping!\n");
@@ -261,21 +259,12 @@ static const struct lws_protocol_vhost_options pvo = {
     "hoverbot", /* protocol name we belong to on this vhost */
     "" /* ignored */
 };
-static const struct lws_extension extensions[] = {
-    {
-        "permessage-deflate",
-        lws_extension_callback_pm_deflate,
-        "permessage-deflate"
-        "; client_no_context_takeover"
-        "; client_max_window_bits"
-    },
-    { NULL, NULL, NULL /* terminator */}
-};
+
 
 Server::Server(int argc, const char**argv) {
 
     const char *p;
-    int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
+    int logs = 0;//LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
             /* for LLL_ verbosity above NOTICE to be built into lws,
              * lws must have been configured and built with
              * -DCMAKE_BUILD_TYPE=DEBUG instead of =RELEASE */
@@ -303,8 +292,8 @@ Server::Server(int argc, const char**argv) {
     info.port = port;
     info.protocols = protocols;
     info.pvo = &pvo;
-    if (!lws_cmdline_option(argc, argv, "-n"))
-        info.extensions = extensions;
+    /*if (!lws_cmdline_option(argc, argv, "-n"))
+        info.extensions = extensions; */
     info.pt_serv_buf_size = 32 * 1024;
     info.options = LWS_SERVER_OPTION_VALIDATE_UTF8 |
             LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;

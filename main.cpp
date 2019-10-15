@@ -31,7 +31,7 @@ using namespace std;
 
 const unsigned int bufferSize = 1024;
 
-
+control lastctrl;
 
 class TTY {
 private:
@@ -51,20 +51,27 @@ public:
     
     void readTo(unsigned char *buf, int *len) {
         unsigned char c;
+        int total = 0;
         for (int i = 0; i < bufferSize; i++) {
             if (read(tty_fd,&c,1)>0) {
                 buf[i] = c;
+                total++;
             } else {
                 break;
             }
         }
+        printf("Read %d bytes\n", total);
+        *len = total;
     }
     
     int writeFrom(unsigned char *str, int len) {
+        int total = 0;
         for (int i =0; i < len; i++) {
             write(tty_fd,&str[i],1);
+            total++;
         }
-        return len;
+        printf("Wrote %d bytes\n", total);
+        return total;
     }
     
     virtual ~TTY() {
@@ -72,6 +79,9 @@ public:
     }
 
 };
+
+int pwm=0;
+int steer=0;
 
 void sigint_handler(int sig)
 {
@@ -82,7 +92,7 @@ TTY *tty;
 HoverboardAPI* ha;
 Server *server;
 int writeTTY(unsigned char *str, int len) {
-    tty->writeFrom(str, len);
+    return tty->writeFrom(str, len);
 }
 
 int main(int argc, const char** argv)
@@ -123,25 +133,43 @@ int main(int argc, const char** argv)
     unsigned char buf[bufferSize];
     int len;
     signal(SIGINT, sigint_handler);
-    /*
+    
     if (argc < 2) {
         fprintf(stderr, "Please specify dev");
         return EXIT_FAILURE;       
-    }*/
+    }
     
     try {
-        //tty = new TTY(argv[0]);
-        //ha = new HoverboardAPI(writeTTY);
+        tty = new TTY(argv[1]);
+        ha = new HoverboardAPI(writeTTY);
         server = new Server(argc, argv);
     /* The Big Loop */
         while (1) {
             /* Do some task here ... */
              len = 0;
-             //tty->readTo(buf, &len);
+             tty->readTo(buf, &len);
              for (int i =0; i < len; i++) {
-                 //ha->protocolPush(buf[i]);
+                 ha->protocolPush(buf[i]);
             }
             server->service();
+            if (lastctrl.forward) {
+                pwm += 5;
+            }
+            if (lastctrl.backward) {
+                pwm -= 5;
+            }
+            if (lastctrl.left) {
+                steer -= 5;
+            }
+            if (lastctrl.right) {
+                steer += 5;
+            }
+            usleep(50*1000);
+            
+            ha->sendPWM(pwm, steer, PROTOCOL_SOM_NOACK);
+            //ha->requestRead(HoverboardAPI::Codes::sensElectrical);
+            //float voltage = ha->getBatteryVoltage();
+            //printf("Voltage=%f\n", voltage);
         }
     } catch (exception &e) {
         fprintf(stderr, "Exception occured: %s", e.what());
