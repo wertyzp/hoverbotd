@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<!--
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+-->
+<html>
+    <head>
+        <title>Hoverbot control</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script>
+            var logger = {
+                element: null,
+                init: function() {
+                    this.element = document.getElementById("console");
+                },
+                log: function(msg) {
+                    let node = document.createTextNode(msg);
+                    let br = document.createElement("br");
+                    this.element.appendChild(node);
+                    this.element.appendChild(br);
+                }
+            };
+            var control = {
+                left: false,
+                right: false,
+                forward: false,
+                backward: false
+            };
+            var keyCodeMap = {
+                87: "forward",
+                83: "backward",
+                65: "left",
+                68: "right"
+            };
+            var lastButton;
+            var app = {
+                socket: null,
+                packet: new Uint32Array(5),
+                interval: null,
+                controlsChanged: function(type, value) {
+                    control[type] = value;
+                    console.log(control);
+                },
+                sendControls: function() {
+                    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+                        logger.log("Can't send controls - not connected");
+                        return;
+                    }
+                    this.packet[0] = 0;
+                    this.packet[1] = control.left?1:0;
+                    this.packet[2] = control.right?1:0;
+                    this.packet[3] = control.forward?1:0;
+                    this.packet[4] = control.backward?1:0;
+                    this.socket.send(this.packet.buffer);
+                    this.setSendTimeout();
+                },
+                setSendTimeout: function() {
+                    setTimeout(() => {
+                        this.sendControls();
+                    },100);
+                },
+                disconnect: function() {
+                    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+                        logger.log("Can't disconnect - not connected");
+                        return;
+                    }
+                    this.socket.close();
+                    this.socket = null;
+                },
+                disconnected: function() {
+                    clearInterval(this.interval);  
+                },
+                connect: function() {
+                   if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                       logger.log('already open');
+                       return;
+                   }
+                   socket = new WebSocket("ws://192.168.10.5:7681","hoverbot");
+                   socket.onopen = function(e) {
+                     logger.log("[open] Connection established");
+                   };
+
+                   socket.onmessage = function(event) {
+                       //console.log(event);
+                     //logger.log(`[message] Data received from server: ${event.data}`);
+                   };
+
+                   socket.onclose = function(event) {
+                     if (event.wasClean) {
+                       logger.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                     } else {
+                       // e.g. server process killed or network down
+                       // event.code is usually 1006 in this case
+                       logger.log('[close] Connection died');
+                     }
+                     app.disconnected();
+                   };
+
+                   socket.onerror = function(error) {
+                     logger.log(`[error] ${error.message}`);
+                   };
+                   socket.binaryType = "arraybuffer";
+                   this.setSendTimeout();
+                   this.socket = socket;
+               }
+            };
+
+            document.addEventListener("DOMContentLoaded", () => {
+                if ("ontouchstart" in document.documentElement) {
+                    document.getElementById("touch-cursor").style.display = "block";
+                    document.getElementById("desktop-cursor").style.display = "none";
+                }
+                logger.init();
+                document.getElementById("connect").addEventListener("click", () => {
+                   app.connect(); 
+                });
+                document.getElementById("disconnect").addEventListener("click", () => {
+                    app.disconnect();
+                });
+                document.getElementById("send").addEventListener("click", () => {
+                    app.sendControls();
+                });
+                let cursors = document.body.querySelectorAll(".cursor");
+                let stopMouseDown = function(e)  {
+                    control[e.target.id] = false;
+                    console.log(control);
+                };
+                let resumeMouseDown = function(e)  {
+                    control[e.target.id] = true;
+                    console.log(control);
+                };
+                let clearButtonState = function(e) {
+                    lastButton.removeEventListener("mouseover", resumeMouseDown);
+                    lastButton.removeEventListener("mouseover", resumeMouseDown);
+                    lastButton.removeEventListener("mouseout", stopMouseDown);
+                    lastButton = null;
+                    app.controlsChanged(e.target.id, false);
+                    document.removeEventListener("mouseup", clearButtonState);
+                };
+                let mousedown = function(e) {
+                    console.log(e);
+                    lastButton = e.target;
+                    app.controlsChanged(e.target.id, true);
+                    lastButton.addEventListener("mouseout", stopMouseDown);
+                    lastButton.addEventListener("mouseover", resumeMouseDown);
+                    document.addEventListener("mouseup", clearButtonState);
+                };
+                for (let i = 0; i < cursors.length; i++) {
+                    cursors[i].addEventListener("mousedown", mousedown);
+                }
+                document.addEventListener("keydown", (e) => {
+                    if (!keyCodeMap[e.keyCode]) {
+                        return;
+                    }
+                    e.preventDefault();
+                    if (control[keyCodeMap[e.keyCode]]) {
+                        return;
+                    }
+                    app.controlsChanged(keyCodeMap[e.keyCode], true);
+                    document.getElementById(keyCodeMap[e.keyCode]).classList.add("active");
+                });
+                document.addEventListener("keyup", (e) => {
+                    if (!keyCodeMap[e.keyCode]) {
+                        return;
+                    }
+                    e.preventDefault();
+                    app.controlsChanged(keyCodeMap[e.keyCode], false);
+                    document.getElementById(keyCodeMap[e.keyCode]).classList.remove("active");
+                });
+            });
+        </script>
+        <style>
+            .cursor {
+                width: 64px;
+                height: 64px;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 40px;
+            }
+            button.cursor:active{
+                background: grey;
+                color: white;
+            }
+            button.cursor.active {
+                background: grey;
+                color: white;                
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="desktop-cursor" style="text-align: center; width: 210px;">
+            <div>
+                <button class="cursor" accesskey="w" id="forward">&uarr;</button>
+            </div>
+            <div>
+                <button class="cursor" accesskey="a" id="left">&larr;</button>
+                <button class="cursor" accesskey="s" id="backward">&darr;</button>
+                <button class="cursor" accesskey="d" id="right">&rarr;</button>
+            </div>
+        </div>
+        <div id="touch-cursor" style="display: none;">
+            
+        </div>
+        <div>
+            <button id="connect">Connect</button>
+            <button id="disconnect">Disconnect</button>
+            <button id="send">Send Controls</button>
+        </div>
+        <div id="console"></div>
+    </body>
+</html>
