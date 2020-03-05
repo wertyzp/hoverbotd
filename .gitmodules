@@ -1,6 +1,3 @@
-[submodule "bipropellant-hoverboard-api"]
-	path = bipropellant-hoverboard-api
-	url = https://github.com/wertyzp/bipropellant-hoverboard-api.git
 [submodule "libwebsockets"]
 	path = libwebsockets
 	url = https://github.com/warmcat/libwebsockets.git
