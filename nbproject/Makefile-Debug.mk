@@ -59,7 +59,7 @@ FFLAGS=
 ASFLAGS=
 
 # Link Libraries and Options
-LDLIBSOPTIONS=-Llibwebsockets/build/lib -lwebsockets
+LDLIBSOPTIONS=-Llibwebsockets/build/lib -Wl,-rpath,'libwebsockets/build/lib' -lwebsockets
 
 # Build Targets
 .build-conf: ${BUILD_SUBPROJECTS}

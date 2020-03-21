@@ -46,7 +46,9 @@ public:
         }
         cfsetospeed(&tio,B115200);            // 115200 baud
         cfsetispeed(&tio,B115200);            // 115200 baud
-        tcsetattr(tty_fd,TCSANOW,&tio);
+        cfmakeraw(&tio);
+        tio.c_cflag |= (CLOCAL | CREAD);
+        tcsetattr(tty_fd,TCSAFLUSH,&tio);
     }
     
     void readTo(unsigned char *buf, int *len) {
@@ -85,14 +87,20 @@ int steer=0;
 
 void sigint_handler(int sig)
 {
-	interrupted = 1;
+    interrupted = 1;
 }
 
 TTY *tty;
+TTY *tty2;
 HoverboardAPI* ha;
+HoverboardAPI* ha2;
 Server *server;
 int writeTTY(unsigned char *str, int len) {
     return tty->writeFrom(str, len);
+}
+
+int writeTTY2(unsigned char *str, int len) {
+    return tty2->writeFrom(str, len);
 }
 
 int main(int argc, const char** argv)
@@ -134,23 +142,32 @@ int main(int argc, const char** argv)
     int len;
     signal(SIGINT, sigint_handler);
     
-    if (argc < 2) {
-        fprintf(stderr, "Please specify dev");
+    if (argc < 3) {
+        fprintf(stderr, "Please specify devs");
         return EXIT_FAILURE;       
     }
     
     try {
         tty = new TTY(argv[1]);
+        tty2 = new TTY(argv[2]);
         ha = new HoverboardAPI(writeTTY);
+        ha2 = new HoverboardAPI(writeTTY2);
         server = new Server(argc, argv);
     /* The Big Loop */
         while (1) {
             /* Do some task here ... */
-             len = 0;
-             tty->readTo(buf, &len);
-             for (int i =0; i < len; i++) {
+            len = 0;
+            tty->readTo(buf, &len);
+            for (int i =0; i < len; i++) {
                  ha->protocolPush(buf[i]);
             }
+            
+            len = 0;
+            tty2->readTo(buf, &len);
+            for (int i =0; i < len; i++) {
+                 ha2->protocolPush(buf[i]);
+            }
+            
             server->service();
             if (lastctrl.forward) {
                 pwm += 5;
@@ -164,12 +181,30 @@ int main(int argc, const char** argv)
             if (lastctrl.right) {
                 steer += 5;
             }
-            usleep(50*1000);
             
+            if (!lastctrl.forward && !lastctrl.backward && !lastctrl.left && !lastctrl.right) {
+                pwm = pwm * 0.95;
+                if (abs(pwm) < 10) {
+                    pwm = 0;
+                }
+                steer = steer * 0.95;
+                if (abs(steer) < 10) {
+                    steer = 0;
+                }
+            }
+            usleep(50*1000);
+            printf("forward: %d, backward: %d, left: %d, right:%d\n", lastctrl.forward, lastctrl.backward, lastctrl.left, lastctrl.right);
+            printf("pwm: %d, steer: %d\n", pwm, steer);
             ha->sendPWM(pwm, steer, PROTOCOL_SOM_NOACK);
-            //ha->requestRead(HoverboardAPI::Codes::sensElectrical);
-            //float voltage = ha->getBatteryVoltage();
-            //printf("Voltage=%f\n", voltage);
+            ha2->sendPWM(-pwm, steer, PROTOCOL_SOM_NOACK);
+            /*
+            ha->requestRead(HoverboardAPI::Codes::sensElectrical);
+            float voltage = ha->getBatteryVoltage();
+            printf("Voltage=%f\n", voltage);
+            */
+            if (interrupted) {
+                break;
+            }
         }
     } catch (exception &e) {
         fprintf(stderr, "Exception occured: %s", e.what());

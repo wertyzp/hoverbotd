@@ -77,7 +77,9 @@ and open the template in the editor.
                        logger.log('already open');
                        return;
                    }
-                   socket = new WebSocket("ws://192.168.10.5:7681","hoverbot");
+                   //location.hostname
+                   let hostname = "192.168.10.111";
+                   socket = new WebSocket(`ws://${hostname}:7681`,"hoverbot");
                    socket.onopen = function(e) {
                      logger.log("[open] Connection established");
                    };
